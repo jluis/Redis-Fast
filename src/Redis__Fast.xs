@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/epoll.h>
 
 #define MAX_ERROR_SIZE 256
 
@@ -54,6 +55,8 @@ typedef struct redis_fast_s {
     int is_subscriber;
     int expected_subs;
     pid_t pid;
+    int epfd;
+    int ep_events;
     enum {
         FLAG_INSIDE_TRANSACTION = 0x01,
         FLAG_INSIDE_WATCH = 0x02,
@@ -142,6 +145,7 @@ static int Attach(redisAsyncContext *ac) {
     return REDIS_OK;
 }
 
+/*
 static int wait_for_event(Redis__Fast self, double read_timeout, double write_timeout) {
     redisContext *c;
     int fd;
@@ -225,6 +229,102 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
     DEBUG_MSG("%s", "finish");
     return WAIT_FOR_EVENT_OK;
 }
+*/
+
+static int wait_for_event(Redis__Fast self, double read_timeout, double write_timeout) {
+    redisContext *c;
+    int fd;
+    redis_fast_event_t *e;
+    struct timeval t;
+    int rc;
+    double timeout = -1;
+    int timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+    struct epoll_event ev;
+
+    if(self==NULL) return WAIT_FOR_EVENT_EXCEPTION;
+    if(self->ac==NULL) return WAIT_FOR_EVENT_EXCEPTION;
+
+    c = &(self->ac->c);
+    fd = c->fd;
+    e = (redis_fast_event_t*)self->ac->ev.data;
+    if(e==NULL) return 0;
+
+    if((e->flags & (WAIT_FOR_READ|WAIT_FOR_WRITE)) == (WAIT_FOR_READ|WAIT_FOR_WRITE)) {
+        DEBUG_MSG("set READ and WRITE, compare read_timeout = %f and write_timeout = %f",
+                  read_timeout, write_timeout);
+        if(read_timeout < 0 && write_timeout < 0) {
+            timeout = -1;
+            timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+        } else if(read_timeout < 0) {
+            timeout = write_timeout;
+            timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+        } else if(write_timeout < 0) {
+            timeout = read_timeout;
+            timeout_mode = WAIT_FOR_EVENT_READ_TIMEOUT;
+        } else if(read_timeout < write_timeout) {
+            timeout = read_timeout;
+            timeout_mode = WAIT_FOR_EVENT_READ_TIMEOUT;
+        } else {
+            timeout = write_timeout;
+            timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+        }
+    } else if(e->flags & WAIT_FOR_READ) {
+        DEBUG_MSG("set READ, read_timeout = %f", read_timeout);
+        timeout = read_timeout;
+        timeout_mode = WAIT_FOR_EVENT_READ_TIMEOUT;
+    } else if(e->flags & WAIT_FOR_WRITE) {
+        DEBUG_MSG("set WRITE, write_timeout = %f", write_timeout);
+        timeout = write_timeout;
+        timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+    }
+
+  START_SELECT:
+    if( self->ep_events != e->flags) {
+        DEBUG_MSG("%s", "event mode has changed");
+        memset(&ev, 0, sizeof(ev));
+        if(e->flags & WAIT_FOR_READ) { ev.events |= EPOLLIN; }
+        if(e->flags & WAIT_FOR_WRITE) { ev.events |= EPOLLOUT; }
+        ev.data.fd = fd;
+        if (epoll_ctl(self->epfd, EPOLL_CTL_MOD, fd, &ev) < 0) {
+            croak("failed to epoll_ctl");
+        }
+        self->ep_events = e->flags;
+    }
+
+    DEBUG_MSG("epoll_wait start, timeout is %f", timeout);
+    rc = epoll_wait(self->epfd, &ev, 1, (int)(timeout * 1000));
+    DEBUG_MSG("epoll_wait returns %d", rc);
+    if(rc == 0) {
+        DEBUG_MSG("%s", "timeout");
+        return timeout_mode;
+    }
+
+    if(rc < 0) {
+        DEBUG_MSG("%s", "exception!!");
+        if( errno == EINTR ) {
+            PERL_ASYNC_CHECK();
+            DEBUG_MSG("%s", "recieved interrupt. retry wait_for_event");
+            goto START_SELECT;
+        }
+        return WAIT_FOR_EVENT_EXCEPTION;
+    }
+    DEBUG_MSG("event = 0x%x", ev.events);
+    if(self->ac && (ev.events & EPOLLIN)) {
+        DEBUG_MSG("ready to %s", "read");
+        redisAsyncHandleRead(self->ac);
+    }
+    if(self->ac && (ev.events & EPOLLOUT)) {
+        DEBUG_MSG("ready to %s", "write");
+        redisAsyncHandleWrite(self->ac);
+    }
+    if(ev.events & (EPOLLERR | EPOLLHUP)) {
+        DEBUG_MSG("%s", "epollerr or epollhup");
+        return WAIT_FOR_EVENT_EXCEPTION;
+    }
+
+    DEBUG_MSG("%s", "finish");
+    return WAIT_FOR_EVENT_OK;
+}
 
 static void Redis__Fast_connect_cb(redisAsyncContext* c, int status) {
     Redis__Fast self = (Redis__Fast)c->data;
@@ -252,6 +352,7 @@ static redisAsyncContext* __build_sock(Redis__Fast self)
     redisAsyncContext *ac;
     double timeout;
     int res;
+    struct epoll_event ev;
 
     DEBUG_MSG("%s", "start");
 
@@ -284,6 +385,20 @@ static redisAsyncContext* __build_sock(Redis__Fast self)
     Attach(ac);
     redisAsyncSetConnectCallback(ac, (redisConnectCallback*)Redis__Fast_connect_cb);
     redisAsyncSetDisconnectCallback(ac, (redisDisconnectCallback*)Redis__Fast_disconnect_cb);
+
+    if(self->epfd >= 0) {
+        DEBUG_MSG("%s", "close epoll fd");
+        close(self->epfd);
+    }
+    if((self->epfd = epoll_create(1)) < 0) {
+        croak("fail to epoll_create");
+    }
+    memset(&ev, 0, sizeof(ev));
+    ev.data.fd = ac->c.fd;
+    if (epoll_ctl(self->epfd, EPOLL_CTL_ADD, ac->c.fd, &ev) < 0) {
+        croak("fail to epoll_ctl");
+    }
+    self->ep_events = 0;
 
     // wait to connect...
     timeout = self->every / 1000.0;
@@ -697,6 +812,7 @@ CODE:
     DEBUG_MSG("%s", "start");
     Newxz(self, sizeof(redis_fast_t), redis_fast_t);
     self->error = (char*)malloc(MAX_ERROR_SIZE);
+    self->epfd = -1;
     ST(0) = sv_newmortal();
     sv_setref_pv(ST(0), cls, (void*)self);
     DEBUG_MSG("return %p", ST(0));
@@ -889,6 +1005,12 @@ DESTROY(Redis::Fast self);
 CODE:
 {
     DEBUG_MSG("%s", "start");
+    if(self->epfd >= 0) {
+        DEBUG_MSG("%s", "close epoll fd");
+        close(self->epfd);
+        self->epfd = -1;
+    }
+
     if (self->ac) {
         DEBUG_MSG("%s", "free ac");
         redisAsyncFree(self->ac);

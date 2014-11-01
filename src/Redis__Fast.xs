@@ -719,6 +719,19 @@ static redis_fast_reply_t Redis__Fast_info_custom_decode(Redis__Fast self, redis
     return res;
 }
 
+
+static void confess(Redis__Fast self) {
+    dSP;
+    ENTER;
+    SAVETMPS;
+    PUSHMARK(SP);
+    XPUSHs( sv_2mortal(newSVpvn(self->error, strlen(self->error))) );
+    PUTBACK;
+    call_pv("Carp::confess", G_DISCARD);
+    FREETMPS;
+    LEAVE;
+}
+
 MODULE = Redis::Fast		PACKAGE = Redis::Fast
 
 SV*
@@ -916,6 +929,14 @@ CODE:
     XSRETURN(1);
 }
 
+void __is_valid_command(Redis::Fast self, char* cmd)
+CODE:
+{
+    if(self->is_subscriber) {
+        snprintf(self->error, MAX_ERROR_SIZE, "Cannot use command '%s' while in SUBSCRIBE mode, ", cmd);
+        confess(self);
+    }
+}
 
 void
 DESTROY(Redis::Fast self);

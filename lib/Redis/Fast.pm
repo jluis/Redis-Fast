@@ -400,12 +400,6 @@ sub __process_pubsub_msg {
 
 }
 
-sub __is_valid_command {
-  my ($self, $cmd) = @_;
-
-  confess("Cannot use command '$cmd' while in SUBSCRIBE mode, ")
-    if $self->is_subscriber;
-}
 
 1;    # End of Redis.pm
 

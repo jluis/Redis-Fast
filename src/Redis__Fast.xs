@@ -1097,6 +1097,11 @@ CODE:
     if(cb && EQUALS_COMMAND(argvlen[0], argv[0], "EXEC"))
         collect_errors = 1;
 
+    if(self->is_subscriber) {
+        snprintf(self->error, MAX_ERROR_SIZE, "Cannot use command '%s' while in SUBSCRIBE mode, ", argv[0]);
+        confess(self);
+    }
+
     ret = Redis__Fast_run_cmd(self, collect_errors, NULL, cb, argc, (const char**)argv, argvlen);
 
     Safefree(argv);

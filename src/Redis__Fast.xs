@@ -55,6 +55,9 @@ typedef struct redis_fast_s {
     int is_subscriber;
     int expected_subs;
     pid_t pid;
+    char** argv;
+    size_t* argvlen;
+    size_t argc;
     enum {
         FLAG_INSIDE_TRANSACTION = 0x01,
         FLAG_INSIDE_WATCH = 0x02,
@@ -96,6 +99,24 @@ typedef struct redis_fast_event_s {
     int flags;
 } redis_fast_event_t;
 
+
+static void realloc_argv(Redis__Fast self, size_t argc) {
+    char** argv;
+    size_t* argvlen;
+
+    if(argc <= self->argc) return; // no need to realloc
+
+    // free old memory
+    if(self->argv) Safefree(self->argv);
+    if(self->argvlen) Safefree(self->argvlen);
+
+    // allocate
+    Newx(argv, sizeof(char*) * argc, char*);
+    Newx(argvlen, sizeof(size_t) * argc, size_t);
+    self->argv = argv;
+    self->argvlen = argvlen;
+    self->argc = argc;
+}
 
 static void AddRead(void *privdata) {
     redis_fast_event_t *e = (redis_fast_event_t*)privdata;
@@ -985,6 +1006,20 @@ CODE:
         self->data = NULL;
     }
 
+    if(self->argv) {
+        DEBUG_MSG("%s", "free argv");
+        Safefree(self->argv);
+        self->argv = NULL;
+        self->argc = 0;
+    }
+
+    if(self->argvlen) {
+        DEBUG_MSG("%s", "free argvlen");
+        Safefree(self->argvlen);
+        self->argvlen = NULL;
+        self->argc = 0;
+    }
+
     Safefree(self);
     DEBUG_MSG("%s", "finish");
 }
@@ -1085,8 +1120,10 @@ CODE:
         cb = NULL;
         argc = items - 1;
     }
-    Newx(argv, sizeof(char*) * argc, char*);
-    Newx(argvlen, sizeof(size_t) * argc, size_t);
+
+    realloc_argv(self, argc);
+    argv = self->argv;
+    argvlen = self->argvlen;
 
     for (i = 0; i < argc; i++) {
         argv[i] = SvPV(ST(i + 1), len);
@@ -1098,9 +1135,6 @@ CODE:
         collect_errors = 1;
 
     ret = Redis__Fast_run_cmd(self, collect_errors, NULL, cb, argc, (const char**)argv, argvlen);
-
-    Safefree(argv);
-    Safefree(argvlen);
 
     ST(0) = ret.result ? ret.result : sv_2mortal(newSV(0));
     ST(1) = ret.error ? ret.error : sv_2mortal(newSV(0));

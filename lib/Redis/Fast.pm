@@ -208,7 +208,6 @@ sub AUTOLOAD {
 
   my $method = sub {
       my $self = shift;
-      $self->__is_valid_command($command);
       my ($ret, $error) = $self->__std_cmd(@command, @_);
       confess "[$command] $error, " if defined $error;
       return (wantarray && ref $ret eq 'ARRAY') ? @$ret : $ret;
@@ -276,7 +275,6 @@ sub shutdown {
 sub select {
   my $self = shift;
   my $database = shift;
-  $self->__is_valid_command('select');
   my ($ret, $error) = $self->__std_cmd('SELECT', $database, @_);
   confess "[SELECT] $error, " if defined $error;
   $self->__get_data->{current_database} = $database;

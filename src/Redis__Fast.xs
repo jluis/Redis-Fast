@@ -186,7 +186,8 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
     e = (redis_fast_event_t*)self->ac->ev.data;
     if(e==NULL) return 0;
 
-    if((e->flags & (WAIT_FOR_READ|WAIT_FOR_WRITE)) == (WAIT_FOR_READ|WAIT_FOR_WRITE)) {
+    switch(e->flags & (WAIT_FOR_READ|WAIT_FOR_WRITE)) {
+    case WAIT_FOR_READ|WAIT_FOR_WRITE:
         DEBUG_MSG("set READ and WRITE, compare read_timeout = %f and write_timeout = %f",
                   read_timeout, write_timeout);
         if(read_timeout < 0 && write_timeout < 0) {
@@ -205,14 +206,17 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
             timeout = write_timeout;
             timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
         }
-    } else if(e->flags & WAIT_FOR_READ) {
+        break;
+    case WAIT_FOR_READ:
         DEBUG_MSG("set READ, read_timeout = %f", read_timeout);
         timeout = read_timeout;
         timeout_mode = WAIT_FOR_EVENT_READ_TIMEOUT;
-    } else if(e->flags & WAIT_FOR_WRITE) {
+        break;
+    case WAIT_FOR_WRITE:
         DEBUG_MSG("set WRITE, write_timeout = %f", write_timeout);
         timeout = write_timeout;
         timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+        break;
     }
 
   START_SELECT:

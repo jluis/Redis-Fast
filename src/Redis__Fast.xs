@@ -464,7 +464,7 @@ static redis_fast_reply_t Redis__Fast_decode_reply(Redis__Fast self, redisReply*
         res.result = sv_2mortal(newSViv(reply->integer));
         break;
     case REDIS_REPLY_NIL:
-        res.result = sv_2mortal(newSV(0));
+        res.result = &PL_sv_undef;
         break;
 
     case REDIS_REPLY_ARRAY: {
@@ -479,19 +479,19 @@ static redis_fast_reply_t Redis__Fast_decode_reply(Redis__Fast self, redisReply*
                 if(elem.result) {
                     av_push(elem_av, SvREFCNT_inc(elem.result));
                 } else {
-                    av_push(elem_av, newSV(0));
+                    av_push(elem_av, &PL_sv_undef);
                 }
                 if(elem.error) {
                     av_push(elem_av, SvREFCNT_inc(elem.error));
                 } else {
-                    av_push(elem_av, newSV(0));
+                    av_push(elem_av, &PL_sv_undef);
                 }
                 av_push(av, newRV_inc((SV*)elem_av));
             } else {
                 if(elem.result) {
                     av_push(av, SvREFCNT_inc(elem.result));
                 } else {
-                    av_push(av, newSV(0));
+                    av_push(av, &PL_sv_undef);
                 }
                 if(elem.error && !res.error) {
                     res.error = elem.error;
@@ -1159,8 +1159,8 @@ CODE:
 
     free_argv(self, &arg);
 
-    ST(0) = ret.result ? ret.result : sv_2mortal(newSV(0));
-    ST(1) = ret.error ? ret.error : sv_2mortal(newSV(0));
+    ST(0) = ret.result ? ret.result : &PL_sv_undef;
+    ST(1) = ret.error ? ret.error : &PL_sv_undef;
     XSRETURN(2);
 }
 

@@ -220,13 +220,13 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
         }
         return WAIT_FOR_EVENT_EXCEPTION;
     }
-    if(self->ac && FD_ISSET(fd, &readfds)) {
-        DEBUG_MSG("ready to %s", "read");
-        redisAsyncHandleRead(self->ac);
-    }
     if(self->ac && FD_ISSET(fd, &writefds)) {
         DEBUG_MSG("ready to %s", "write");
         redisAsyncHandleWrite(self->ac);
+    }
+    if(self->ac && FD_ISSET(fd, &readfds)) {
+        DEBUG_MSG("ready to %s", "read");
+        redisAsyncHandleRead(self->ac);
     }
 
     DEBUG_MSG("%s", "finish");

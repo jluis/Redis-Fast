@@ -55,6 +55,10 @@ typedef struct redis_fast_s {
     int is_subscriber;
     int expected_subs;
     pid_t pid;
+    char** argv;
+    size_t* argvlen;
+    size_t argc;
+    int using_argv;
     enum {
         FLAG_INSIDE_TRANSACTION = 0x01,
         FLAG_INSIDE_WATCH = 0x02,
@@ -88,6 +92,13 @@ typedef struct redis_fast_subscribe_cb_s {
     Redis__Fast self;
     SV* cb;
 } redis_fast_subscribe_cb_t;
+
+typedef struct redis_fast_argv_s {
+    char** argv;
+    size_t* argvlen;
+    size_t argc;
+    int reused;
+} redis_fast_argv_t;
 
 
 #define WAIT_FOR_READ  0x01
@@ -145,6 +156,43 @@ static int Attach(redisAsyncContext *ac) {
     ac->ev.data = e;
 
     return REDIS_OK;
+}
+
+static void allocate_argv(Redis__Fast self, redis_fast_argv_t *arg, size_t argc) {
+    char** argv;
+    size_t* argvlen;
+    if(self->using_argv) {
+        Newx(argv, sizeof(char*) * argc, char*);
+        Newx(argvlen, sizeof(size_t) * argc, size_t);
+        arg->argv = argv;
+        arg->argvlen = argvlen;
+        arg->argc = argc;
+        arg->reused = 0;
+    } else if(self->argc < argc) {
+        Safefree(self->argv);
+        Safefree(self->argvlen);
+        Newx(argv, sizeof(char*) * argc, char*);
+        Newx(argvlen, sizeof(size_t) * argc, size_t);
+        self->argv = arg->argv = argv;
+        self->argvlen = arg->argvlen = argvlen;
+        self->argc = arg->argc = argc;
+        self->using_argv = 1;
+        arg->reused = 1;
+    } else {
+        arg->argv = self->argv;
+        arg->argvlen = self->argvlen;
+        self->using_argv = 1;
+        arg->reused = 1;
+    }
+}
+
+static void free_argv(Redis__Fast self, redis_fast_argv_t *arg) {
+    if(arg->reused) {
+        self->using_argv = 0;
+    } else {
+        Safefree(arg->argv);
+        Safefree(arg->argvlen);
+    }
 }
 
 static int wait_for_event(Redis__Fast self, double read_timeout, double write_timeout) {
@@ -1073,6 +1121,7 @@ PREINIT:
     size_t* argvlen;
     STRLEN len;
     int argc, i, collect_errors;
+    redis_fast_argv_t arg;
 CODE:
 {
     Redis__Fast_reconnect(self);
@@ -1087,8 +1136,10 @@ CODE:
         cb = NULL;
         argc = items - 1;
     }
-    Newx(argv, sizeof(char*) * argc, char*);
-    Newx(argvlen, sizeof(size_t) * argc, size_t);
+
+    allocate_argv(self, &arg, argc);
+    argv = arg.argv;
+    argvlen = arg.argvlen;
 
     for (i = 0; i < argc; i++) {
         argv[i] = SvPV(ST(i + 1), len);
@@ -1106,8 +1157,7 @@ CODE:
 
     ret = Redis__Fast_run_cmd(self, collect_errors, NULL, cb, argc, (const char**)argv, argvlen);
 
-    Safefree(argv);
-    Safefree(argvlen);
+    free_argv(self, &arg);
 
     ST(0) = ret.result ? ret.result : sv_2mortal(newSV(0));
     ST(1) = ret.error ? ret.error : sv_2mortal(newSV(0));

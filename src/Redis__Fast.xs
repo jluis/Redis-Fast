@@ -156,6 +156,7 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
     int rc;
     double timeout = -1;
     int timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
+    int flags;
 
     if(self==NULL) return WAIT_FOR_EVENT_EXCEPTION;
     if(self->ac==NULL) return WAIT_FOR_EVENT_EXCEPTION;
@@ -165,7 +166,8 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
     e = (redis_fast_event_t*)self->ac->ev.data;
     if(e==NULL) return 0;
 
-    if((e->flags & (WAIT_FOR_READ|WAIT_FOR_WRITE)) == (WAIT_FOR_READ|WAIT_FOR_WRITE)) {
+    flags = e->flags;
+    if((flags & (WAIT_FOR_READ|WAIT_FOR_WRITE)) == (WAIT_FOR_READ|WAIT_FOR_WRITE)) {
         DEBUG_MSG("set READ and WRITE, compare read_timeout = %f and write_timeout = %f",
                   read_timeout, write_timeout);
         if(read_timeout < 0 && write_timeout < 0) {
@@ -184,11 +186,11 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
             timeout = write_timeout;
             timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
         }
-    } else if(e->flags & WAIT_FOR_READ) {
+    } else if(flags & WAIT_FOR_READ) {
         DEBUG_MSG("set READ, read_timeout = %f", read_timeout);
         timeout = read_timeout;
         timeout_mode = WAIT_FOR_EVENT_READ_TIMEOUT;
-    } else if(e->flags & WAIT_FOR_WRITE) {
+    } else if(flags & WAIT_FOR_WRITE) {
         DEBUG_MSG("set WRITE, write_timeout = %f", write_timeout);
         timeout = write_timeout;
         timeout_mode = WAIT_FOR_EVENT_WRITE_TIMEOUT;
@@ -199,8 +201,8 @@ static int wait_for_event(Redis__Fast self, double read_timeout, double write_ti
     t.tv_usec = (timeout - (int)timeout) * 1000000;
 
     DEBUG_MSG("select start, timeout is %f", timeout);
-    FD_ZERO(&readfds); if(e->flags & WAIT_FOR_READ) { FD_SET(fd, &readfds); }
-    FD_ZERO(&writefds); if(e->flags & WAIT_FOR_WRITE) { FD_SET(fd, &writefds); }
+    FD_ZERO(&readfds); if(flags & WAIT_FOR_READ) { FD_SET(fd, &readfds); }
+    FD_ZERO(&writefds); if(flags & WAIT_FOR_WRITE) { FD_SET(fd, &writefds); }
     FD_ZERO(&exceptfds); FD_SET(fd, &exceptfds);
     rc = select(fd + 1, &readfds, &writefds, &exceptfds, timeout < 0 ? NULL : &t);
     DEBUG_MSG("select returns %d", rc);

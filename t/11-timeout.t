@@ -6,6 +6,7 @@ use Test::More;
 use Test::Fatal;
 use Redis::Fast;
 use lib 't/tlib';
+use Test::SpawnRedisServer;
 use Test::SpawnRedisTimeoutServer;
 use Errno qw(ETIMEDOUT EWOULDBLOCK);
 use POSIX qw(strerror);
@@ -57,6 +58,23 @@ subtest "server doesn't respond at connection (cnx_timeout)" => sub {
     ok(!$redis, 'redis was not set');
   }
 };
+
+my ($c, $srv) = redis();
+END { $c->() if $c }
+
+subtest 'Reconnection by read timeout discards pending commands' => sub {
+  ok(my $r = Redis::Fast->new(server => $srv, read_timeout => 1), 'connected to our test redis-server');
+
+  ok($r->set(foo => 'bar'), 'set foo bar');
+
+  eval { $r->debug(sleep => 4) };
+  ok $@, 'sleep command is timeout';
+
+  diag 'waiting for sleep command';
+  sleep 4;
+  is($r->get('foo'), 'bar', 'the value of key foo is bar');
+};
+
 
 done_testing;
 

@@ -28,7 +28,11 @@ sub new {
     } else {
         $make = $Config{make};
     }
-
+    if (-e '.git') {
+        unless (-e 'deps/hiredis/Makefile') {
+            $self->do_system('git','submodule','update','--init');
+        }
+    }   
     $self->do_system($make, '-C', 'deps/hiredis', 'static');
     return $self;
 }

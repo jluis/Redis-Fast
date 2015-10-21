@@ -38,7 +38,7 @@
          "requires" : {
             "Test::CPAN::Meta" : "0",
             "Test::MinimumVersion::Fast" : "0.04",
-            "Test::PAUSE::Permissions" : "0.04",
+	      	"Test::PAUSE::Permissions" : "0.04",
             "Test::Pod" : "1.41",
             "Test::Spellunker" : "v0.2.7"
          }
@@ -77,6 +77,22 @@
          "web" : "https://github.com/shogo82148/Redis-Fast"
       }
    },
+   "provides" : {
+      "Redis::Fast" : {
+         "file" : "lib/Redis/Fast.pm",
+         "version" : "0.16"
+      },
+      "Redis::Fast::Hash" : {
+         "file" : "lib/Redis/Fast/Hash.pm"
+      },
+      "Redis::Fast::List" : {
+         "file" : "lib/Redis/Fast/List.pm"
+      },
+      "Redis::Fast::Sentinel" : {
+         "file" : "lib/Redis/Fast/Sentinel.pm"
+      }
+   },
+
    "version" : "0.16",
    "x_contributors" : [
       "sunnavy <sunnavy@bestpractical.com>",

@@ -4,7 +4,7 @@
       "Ichinose Shogo <shogo82148@gmail.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v2.1.1, CPAN::Meta::Converter version 2.142060",
+   "generated_by" : "Minilla/v2.4.3, CPAN::Meta::Converter version 2.143240",
    "license" : [
       "perl_5"
    ],
@@ -30,7 +30,7 @@
       "configure" : {
          "requires" : {
             "File::Which" : "0",
-            "Module::Build" : "0.38",
+            "Module::Build" : "0.4005",
             "Module::Build::XSUtil" : "0.02"
          }
       },
@@ -68,16 +68,16 @@
    "release_status" : "unstable",
    "resources" : {
       "bugtracker" : {
-         "web" : "https://github.com/shogo82148/Redis-Fast/issues"
+         "web" : "https://github.com/jluis/Redis-Fast/issues"
       },
-      "homepage" : "https://github.com/shogo82148/Redis-Fast",
+      "homepage" : "https://github.com/jluis/Redis-Fast",
       "repository" : {
          "type" : "git",
-         "url" : "git://github.com/shogo82148/Redis-Fast.git",
-         "web" : "https://github.com/shogo82148/Redis-Fast"
+         "url" : "git://github.com/jluis/Redis-Fast.git",
+         "web" : "https://github.com/jluis/Redis-Fast"
       }
    },
-   "version" : "0.16",
+   "version" : "0.19",
    "x_contributors" : [
       "sunnavy <sunnavy@bestpractical.com>",
       "U-LIFEBOOK\\Administrator <Administrator@LIFEBOOK.(none)>",
@@ -116,6 +116,7 @@
       "Erik Carlsson <erik.carlsson@live.com>",
       "Alex Kapranoff <alex@kapranoff.ru>",
       "nise_nabe <nise.nabe@gmail.com>",
-      "Vincent <vincent@weborama.com>"
+      "Vincent <vincent@weborama.com>",
+      "Jose Luis Perez Diez <jluis@escomposlinux.org>"
    ]
 }
